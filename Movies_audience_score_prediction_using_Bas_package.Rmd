@@ -1,0 +1,406 @@
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(BAS)
+library(gridExtra)
+```
+
+### Load data
+
+To get started let's take a look at the database and a set of variables. Based on this dataset we will perform analysis applying modeling and predicting to address a business question, and extract insights about movies.  
+
+```{r load-data}
+# loading database
+load("movies.Rdata")
+```
+
+* * *
+
+## Part 1: Data
+
+In this analysis, we are going to work with the dataset containing the information from Rotten Tomatoes, the website which aggregates film reviews from professional movie critics and amateurs and IMDB (Internet Movie Database), an online database of information related to the world of films, television programs, video games, etc. The dataset includes 651 movies and 32 categorical and numerical variables, giving the following information to the analysis:
+
+```{r}
+# column names of dataset 
+names(movies)
+```
+
+The observations were randomly sampled from the population, hence this is an observational study which will not reveal a causal relationship between variables, we can only generalize analysis results to the population at large.
+
+* * *
+
+## Part 2: Data manipulation
+
+Before proceeding with the exploratory data analysis we need to apply some trasformations to certan variables. A new categorical variable `feature_film` was created based on `title_type`, "Yes" if `title_type` is Feature Film, "No" otherwise. Same method was applied for two more variables drama and `mpaa_rating_r`.
+
+```{r}
+# New variables: feature_film, drama, mpaa_rating_r with two levels: Yes, No
+
+movies <- movies %>%
+  mutate( feature_film = as.factor(if_else(title_type == "Feature Film", "Yes", "No")),
+          drama = as.factor(if_else(genre == "Drama", "Yes", "No")),
+          mpaa_rating_r = as.factor(if_else(mpaa_rating == "R", "Yes", "No")))
+
+```
+
+Two more new variables `oscar_season` and `summer_season` were created to indicate movies realesed from October to December and from May to August respectively.  
+
+```{r}
+# New variables oscar_season and summer_season with two levels: Yes, No
+
+movies <- movies %>%
+  mutate(
+    oscar_season = case_when(thtr_rel_month >= 10 & thtr_rel_month <= 12 ~ "Yes", TRUE ~ "No"),
+    summer_season = case_when(thtr_rel_month >= 5 & thtr_rel_month <= 8 ~ "Yes", TRUE ~ "No")) %>%
+  mutate(oscar_season = factor(oscar_season), summer_season = factor(summer_season))
+
+```
+
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+Now we are ready to dive deeper into our dataset and discover some interesting dependencies between variables. But wait! How do we define movie popularity? What is an appropriate measument of it? In terms of our data `audience_score` or `imdb_rating` should be a good choice. It does not really matter which one to choose as both of these websites are popular among users, so we will go with `audience_score`.
+
+Distribution of our metric of interest `audience_score` is depicted on the plot.
+
+```{r}
+ggplot(data = movies, aes(x = audience_score)) +
+  geom_histogram(color = "black", fill = "aquamarine3", binwidth = 3) +
+  geom_vline(aes(xintercept = mean(movies$audience_score)), color = "black", size = 1) +
+  annotate(geom = "text", x = 32, y = 45, 
+           label = paste("Mean of Audience Score,",
+                         round(mean(movies$audience_score), digits = 1)),
+                         color = "black", hjust = 0) +
+  labs(title = "Audience Score",
+       x = "Audience Score",
+       y = "Frequency") +
+  scale_x_continuous(breaks = seq(0, 100, 15)) +
+  theme_classic()
+```
+
+As can be seen, the distribution is slightly left skewed with mean 62.4, which means that higher scores are more frequent. 
+
+Boxplot was used to describe categorical variable `feature_film`. It shows that feature films are broadly distributed and on average receive lower scores than documentary movies or TV shows.
+
+```{r}
+ggplot(data=movies, aes(x = feature_film, y = audience_score)) +
+  geom_boxplot(fill = "aquamarine2") +
+  labs(title = "Are Feature Films More Popular?",
+       x = "Feature Film", y = "Audience Score") +
+  theme_minimal() 
+  
+```
+
+On a plot below depicted how audience score varies from a genre, drama in particular. It can be seen that dramas tend to receive more positive reviews than other genres.
+
+```{r}
+
+mean_drama <- movies %>%
+  group_by(drama) %>%
+  summarise(audience_score = mean(audience_score))
+
+ggplot(data=mean_drama, aes(x = drama, y = audience_score)) +
+  geom_bar(color = "black", fill = "skyblue2", stat = "identity", position = position_dodge(0.9)) +
+  geom_text(aes(label=round(audience_score, digits = 2)), vjust=-0.6, color="black", size=3.5) +
+  labs(title="Average Audience Score for Dramas and Other Genres", x= "Drama", y= "Audience Score")+
+  theme_classic()
+ 
+```
+
+MPAA (Motion Picture Association of America) is the film rating system, which provides parents with the information needed to determine if a film is appropriate for their children. In general, the MPAA system ratings has 5 levels, which are shown on the plot below.
+
+```{r}
+ggplot(movies, aes(x = mpaa_rating, y = audience_score)) + 
+  geom_boxplot(fill = "yellow2", alpha = 0.5) + 
+  theme_minimal() +
+  labs(title = "Audience Score by MPAA rating",
+       x = "MPAA Rating",
+       y = "Audience Score")
+```
+
+Over a 50% of all movies in the sample have R rating, although a decent number left unrated, the new variable `mpaa_rating_r` was created to organize levels in two proportional groups, movies rated R and all other.  
+
+```{r}
+
+ggplot(data=movies, aes(x = mpaa_rating_r , y = audience_score)) +
+  geom_boxplot(fill = "olivedrab3") +
+  labs(title = "Films Popularity by R MPAA Rating",
+       x = "R MPAA Rating", y = "Audience score") +
+  theme_minimal() 
+
+```
+
+Two new variables `oscar_season` and `summer_season` illustrate the variability in audience score on theatre release date. While there is no strong dependency in the summer season, it is clear that Oscar season released movies has slightly higher audience scores.
+
+```{r}
+
+grid.arrange(
+  ggplot(movies, aes(x = oscar_season, y = audience_score)) + 
+  geom_boxplot(fill = "orchid4", alpha = 0.5) + 
+  theme_minimal() +
+  labs(title = "Oscar Season Movie Release",
+       x = "Oscar Season",
+       y = "Audience Score"),
+  
+  ggplot(movies, aes(x = summer_season, y = audience_score)) + 
+    geom_boxplot(fill = "hotpink2", alpha = 0.5) + 
+    theme_minimal() +
+    labs(title = "Summer Season Movie Release",
+         x = "Summer Season",
+         y = "Audience Score"),
+  ncol = 2)
+
+```
+
+The plot below depicting the correlation between `runtime` and our metric of interest `audience_score` for Oscar Nominated movies. Orange color indicates - nominated movies, green - non-nominated. As can be seen, movies that have been nominated for the award have a higher rating and tend to be longer with mean 133.5 min, there also is a small positive correlation (7%) between their audience score and runtime, thus oscar nominated movies have higher ratings regardless runtime. Non-nominated movies are a bit different story. They are broadly distributed, with mean 105.6 min and higher correlation 22%, hence longer movies with positive reviews are more frequent.  
+
+
+```{r}
+# Organizing data for plots
+rt_as_osc_nom <- movies %>%
+  filter(best_pic_nom == "yes", feature_film == "Yes") %>%
+  select(best_pic_nom, audience_score, runtime)
+
+rt_as_osc_not_nom <- movies %>%
+  filter(best_pic_nom == "no", feature_film == "Yes") %>%
+  select(best_pic_nom, audience_score, runtime)
+  
+ggplot() + 
+  geom_point(data = rt_as_osc_nom, aes(x = runtime, y = audience_score),
+             color = "coral3", alpha = 0.5) + 
+  geom_point(data = rt_as_osc_not_nom , aes(x = runtime, y = audience_score),
+             color = "seagreen3", alpha = 0.5) + 
+  geom_smooth(data = rt_as_osc_nom, aes(x = runtime, y = audience_score), 
+              method = lm, color = "chocolate3", se = FALSE) + 
+  geom_smooth(data = rt_as_osc_not_nom, aes(x = runtime, y = audience_score), 
+              method = lm, color = "green4", se = FALSE) + 
+  annotate(geom = "text", x = 175, y = 90, 
+           label = paste("R =", round(cor(rt_as_osc_nom$runtime,
+                                          rt_as_osc_nom$audience_score,
+                                          use = "complete.obs"), digits = 2)),
+                                          color = "chocolate3", hjust = 0) +
+  annotate(geom = "text", x = 180, y = 80, 
+           label = paste("R =", round(cor(rt_as_osc_not_nom$runtime,  
+                                          rt_as_osc_not_nom$audience_score, 
+                                          use = "complete.obs"), digits = 2)),
+                                          color = "green4",
+                                          hjust = 0) +
+  labs(title = "Corellation between Runtime and Audience Score by Oscar Nomination",
+       x = "Runtime",
+       y = "Audience Score") +
+
+  theme_minimal() 
+ 
+```
+
+
+```{r}
+nom_sum <- rt_as_osc_nom %>%
+  summarise(rt_mean_nom = mean(runtime), as_mean_nom = mean(audience_score)) 
+names(nom_sum) <- c("Runtime mean(nom)", "Audience Score mean(nom)")
+not_nom_sum <- rt_as_osc_not_nom %>%
+  summarise(rt_mean_not_nom = mean(runtime), as_mean_not_nom = mean(audience_score))
+names(not_nom_sum) <- c("Runtime mean(not_nom)", "Audience Score mean(not-nom)")
+final <- cbind(nom_sum, not_nom_sum)
+final
+  
+```
+
+Another potential predictor of `audience-score` is `critics_score`. No surprise that there is a strong positive correlation between the two (R = 0.7), as can be seen on the chart below. Critic's reviews should more or less reflect the preference of the public. However, the `critics_score` variable might be a good predictor, we will not include it in the model. 
+
+```{r}
+ggplot(data = movies, aes(x = critics_score, y = audience_score)) +
+  geom_point(color = "darkorchid1", alpha = 0.5) +
+  geom_smooth(method = lm, color = "darkorchid4", se = FALSE) +
+   annotate(geom = "text", x = 90, y = 20, 
+           label = paste("R =", round(cor(movies$critics_score,
+                                          movies$audience_score,
+                                          use = "complete.obs"), digits = 2)),
+                                          color = "black", hjust = 0) +
+  labs(title = "Corellation between Critics Score and Audience Score",
+       x = "Critics Score",
+       y = "Audience Score") +
+  theme_classic()
+  
+```
+
+* * *
+
+## Part 4: Modeling
+
+Fitting a multiple linear regression model to predict movie popularity, we need to further remove some variables which contain meaningless information, they are:
+<ul>
+<li>`director`
+<li>`actor1`
+<li>`actor2`
+<li>`actor3`
+<li>`actor4`
+<li>`actor5`
+<li>`imdb_url`
+<li>`rt_url`
+</ul>
+
+Some variables are not applicable for prediction, such as `imdb_rating`, `imdb_num_votes`, `critics_score` because, simply, these numbers will be unavailable before a movie is released. `audience_rating`, and `critics_rating` are also excluded, as these are a categorical interpretation of the numerical variables `audience_score`, `critics_score`, thus less informative.
+
+<ul>
+<li>`feature_film`
+<li>`drama`
+<li>`mpaa_rating_r`
+<li>`oscar_season`
+<li>`summer_season`
+<li>`runtime`
+<li>`best_pic_nom`
+<li>`best_pic_win`
+<li>`best_actor_win`
+<li>`best_actress_win`
+<li>`best_dir_win`
+<li>`top200_box`
+</ul>
+
+```{r}
+# creating a dataframe with considered predictors
+model_bas_df <- movies %>%
+  select(feature_film, drama, runtime, mpaa_rating_r, oscar_season, summer_season, audience_score, best_pic_nom, best_pic_win, best_actor_win, best_actress_win, best_dir_win, top200_box) 
+
+```
+
+Fitting a prediction model, the `Bas.lm` function from the BAS package is used, which is sensitive for NAs. Therefore, before getting started, checking for NAs is required.
+
+```{r}
+  which(is.na(model_bas_df), arr.ind=TRUE) #finding the location of NA in new dataset
+```
+
+```{r}
+names(model_bas_df[,3]) #print the name of column which contains NA
+```
+
+Seems like 334th observation which corresponds to the movie The End Of America has a missing value in runtime column. It is not difficult to find and add missing information to the dataset. According to Wiki duration of the movie is 74 min (https://en.wikipedia.org/wiki/The_End_of_America_(film))  
+
+```{r}
+model_bas_df[334,3] <- 74 #inserting a new value 
+```
+
+Now, when our data frame is ready, we can run the `bas.lm` function to fit the model, this function allows take into account the uncertainty, providing a posterior probability of all possible models. The `bas.lm` function requires additional arguments as following `prior` and `modelprior`. We use `prior` = "BIC" in the `bas.lm` when we use the Bayesian Information Criterion as an approximation of the log of marginal likelihood under the reference prior. Reference prior means that we assign an equal prior probability to our coefficients to be included in the model. `modelprior` = uniform() assign equal probabilities to all models.
+
+```{r}
+movie_bas <- bas.lm(audience_score ~ ., 
+                 data = model_bas_df, prior = "BIC",
+                 modelprior = uniform())
+movie_bas
+```
+
+Object `bas.lm` contains useful information which can be used in the analysis. Some of the information could be extracted with `summary`.
+
+```{r}
+round(summary(movie_bas), 3)
+```
+
+The summary shows 5 top models with higher posterior probabilities. All 5 models suggest to include `feature_film`, `drama`, `runtime`, `best_pic_nom` and `intercept` as a predictors. `dim` says that model should include from 5 to 7 variables. Column P(B != 0 | Y) shows posterior inclusion probabilities (pip) for coefficients, thus feature_film, drama, runtime and best_pic_nom have the highest pip. 
+
+Pips for each coeficient can be plotted. Some of them are depicted on the chart below. 
+
+```{r}
+coef_movies <- coef(movie_bas)
+par(mfrow=c(3,2))
+plot(coef_movies, subset = c(2, 3, 4, 7, 9, 12), ask=F)
+```
+
+These graphs show us the curve of probability density function for each coefficient. We can say that `drama` and `runtime` have a very little point mass at 0, while the distributions of `summer_season`, `best_pic_win`, `best_dir_win` have a relatively large mass at 0. Hence, we are almost certain that `runtime` and `drama` should be included under Bayesian model averaging.
+
+`BAS` package also provides a range of model diagnostic features such as plotting the Residuals, Model Complexity, and Marginal Inclusion Probability. Here are diagnostic plots of our model.
+
+**Residuals Versus Fitted Values Using BMA**
+
+```{r}
+plot(movie_bas, which = 1, add.smooth = F, 
+     ask = F)
+abline(a = 0, b = 0, col = "darkgrey", lwd = 2)
+```
+
+Ideally, we expect to see no outliers and constant variance in the residual plot. However, there are some outliers, residuals are more or less constantly distributed around 0.
+
+**Model Complexity**
+
+Next plot is the model size versus Bayes factor, to compare each model with the null model, the one that includes only intercept. From the plot below, we can say that the model with the highest Bayes factor has 5 or 6 predictors.
+
+```{r}
+plot(movie_bas, which=3, ask=F, caption="", sub.caption="")
+```
+
+**Marginal Inclusion Probability**
+
+Blue lines on the graph below indicate the variables where the posterior inclusion probability, is greater than 0.5, suggesting that these variables are important for prediction. In this case, we see that plot totally agrees with the summary, and `feature_film`, `drama`, `runtime`, `best_pic_nom` and intercept make the biggest impact in prediction.
+
+```{r}
+plot(movie_bas, which = 4, ask = F, caption = "", sub.caption = "", 
+     col.in = "blue", col.ex = "darkgrey", lwd = 3)
+```
+
+Finally, the table below provides the posterior mean, the posterior standard deviation, and the posterior inclusion probability of each coefficient taking into account all possible coefficient combinations in 4096 (2^12) models. This model is called the Bayesian model averaging model, or BMA model.
+
+```{r}
+movie_coef = coef(movie_bas)
+movie_coef
+```
+ 
+
+* * *
+
+## Part 5: Prediction
+
+Now, we come up to the most interesting part of the project, it is time to check the predicting accuracy of our model. To do this we will use a single movie Silence released in 2017, thus it is out of the scope of the dataset. All the details needed for prediction were obtained on [Rotten Tomatoes](https://www.rottentomatoes.com/m/silence_2017/) and [IMDB website](https://www.imdb.com/title/tt0490215/).
+
+```{r}
+# createing a new dataframe 
+movie_silence <- data.frame(feature_film = "Yes", drama = "Yes", runtime = 161, mpaa_rating_r = "Yes", oscar_season = "Yes", summer_season = "No", best_pic_nom = "no", best_pic_win = "no" , best_actor_win = "no", best_actress_win = "no", best_dir_win = "yes", top200_box = "no")
+
+# prediction
+predict_silence = predict(movie_bas, movie_silence, interval = "prediction", level = 0.95, se.fit = TRUE)
+
+# predicted results
+data.frame('Movie' = 'Silence',
+           'Estimated Audience Score' = predict_silence$Ybma, 
+           'Real Audience Score' = 69)
+
+```
+
+
+* * *
+
+## Part 6: Conclusion
+
+The popularity of a movie is not an easy object to measure, explain or explore. There is a huge range of factors that can influence the popularity. These factors are hard to define. Mostly because it is the result of human perception. Two different persons with different background and experience could give absolutely opposite reviews on the same movie.
+
+That is why it is very complicated to fit a model for predicting audience score of the movie given the data in the sample, however, our model still provides more or less accurate results.
+
+Not having the prior information on the subject, in this analysis, I am reporting the BMA model for predicting the popularity of a film. This model is taking into account a probability of all possible models to address the uncertainty.
+
+On the way we have learned some interesting facts about movies:
+<ul>
+<li>Oscar nominated movies are usually longer and tend to receive higher audience scores than non-nominated.
+<li>almost 50% of movies have some restrictions to be watched by teens under age 17
+<li>critics scores indeed reflect 70% of public opinion on movies popularity
+<li>inviting Oscar-winning actress or actor does not really contribute much into the popularity of a movie
+</ul>
+
+Imperfect measures of popularity presented in dataset restrict the accuracy of the analysis. I would suggest to gather more data and add some new variables such as:
+<ul>
+<li> film budget
+<li> money spent for visual special effects
+<li> number of visual special effects
+<li> box office (numerical data)
+<li> expand genre with categories: fantasy, detective, thriller, criminal
+<li> number of crushed cars
+<li> number of dead bodies
+<li> facebook page likes of leading cast and director may be the better measurement of popularity rather than Academy awards
+</ul>
+
+
+
